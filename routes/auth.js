@@ -55,43 +55,153 @@ router.post('/logout', checkLogin, function (req, res, next) {
   })
   res.send("logout")
 })
+// Thay đổi password (cần đăng nhập)
 router.post('/changepassword', checkLogin, async function (req, res, next) {
-  let { oldPassword, newPassword } = req.body;
-  let user = await userController.FindByID(req.userId);
-  if (bcrypt.compareSync(oldPassword, user.password)) {
-    user.password = newPassword;
+  try {
+    let { oldPassword, newPassword } = req.body;
+    
+    // Validate input
+    if (!oldPassword || !newPassword) {
+      return res.status(400).send({
+        success: false,
+        message: "Old password và new password là bắt buộc"
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).send({
+        success: false,
+        message: "Password phải đủ 6 ký tự trở lên"
+      });
+    }
+
+    if (oldPassword === newPassword) {
+      return res.status(400).send({
+        success: false,
+        message: "Password mới phải khác password cũ"
+      });
+    }
+
+    let user = await userController.FindByID(req.userId);
+    
+    // Kiểm tra password cũ
+    if (!bcrypt.compareSync(oldPassword, user.password)) {
+      return res.status(401).send({
+        success: false,
+        message: "Password cũ không chính xác"
+      });
+    }
+
+    // Hash password mới
+    let hashedPassword = bcrypt.hashSync(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+
+    res.send({
+      success: true,
+      message: "Đã cập nhật password thành công"
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message
+    });
   }
-  await user.save();
-  res.send("da cap nhat password")
-})
+});
+
+// Quên password - Gửi email với link reset
 router.post('/forgotpassword', async function (req, res, next) {
-  let email = req.body.email;
-  let user = await userController.FindByEmail(email);
-  if (user) {
+  try {
+    let { email } = req.body;
+
+    // Validate email
+    if (!email) {
+      return res.status(400).send({
+        success: false,
+        message: "Email là bắt buộc"
+      });
+    }
+
+    let user = await userController.FindByEmail(email);
+    
+    if (!user) {
+      return res.status(404).send({
+        success: false,
+        message: "Email không tồn tại trong hệ thống"
+      });
+    }
+
+    // Tạo token hết hạn sau 10 phút
     user.forgotPasswordToken = crypto.randomBytes(31).toString('hex');
     user.forgotPasswordTokenExp = new Date(Date.now() + 10 * 60 * 1000);
-    console.log(user.forgotPasswordToken);
+    
     await user.save();
-    res.send("gui mail reset pass")
+    console.log("Reset token:", user.forgotPasswordToken);
 
-    await sendMail(user.email, "http://localhost:3000/auth/resetpassword/" + user.forgotPasswordToken)
-    return;
+    // Gửi email với link reset
+    let resetLink = `http://localhost:3000/auth/resetpassword/${user.forgotPasswordToken}`;
+    await sendMail(user.email, resetLink);
+
+    res.send({
+      success: true,
+      message: "Đã gửi email reset password. Vui lòng kiểm tra email của bạn"
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message
+    });
   }
-  res.send("email khong ton tai")
-})
+});
+
+// Reset password - Sử dụng token từ email
 router.post('/resetpassword/:token', async function (req, res, next) {
-  let token = req.params.token;
-  let newPassword = req.body.password;
-  let getUser = await userController.FindByToken(token);
-  console.log(getUser);
-  if (getUser) {
-    getUser.password = newPassword;
-    getUser.forgotPasswordToken = '';
-    getUser.forgotPasswordTokenExp = null;
-    await getUser.save()
-    res.send(" da cap nhat")
-  } else {
-    res.send("loi token")
+  try {
+    let token = req.params.token;
+    let { password } = req.body;
+
+    // Validate input
+    if (!password) {
+      return res.status(400).send({
+        success: false,
+        message: "Password mới là bắt buộc"
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).send({
+        success: false,
+        message: "Password phải đủ 6 ký tự trở lên"
+      });
+    }
+
+    // Kiểm tra token hợp lệ
+    let user = await userController.FindByToken(token);
+    
+    if (!user) {
+      return res.status(400).send({
+        success: false,
+        message: "Token không hợp lệ hoặc đã hết hạn"
+      });
+    }
+
+    // Hash password mới
+    let hashedPassword = bcrypt.hashSync(password, 10);
+    user.password = hashedPassword;
+    user.forgotPasswordToken = '';
+    user.forgotPasswordTokenExp = null;
+    
+    await user.save();
+
+    res.send({
+      success: true,
+      message: "Đã cập nhật password thành công. Vui lòng đăng nhập lại"
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message
+    });
   }
 })
 

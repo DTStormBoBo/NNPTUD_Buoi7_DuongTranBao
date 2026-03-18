@@ -5,8 +5,6 @@ var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 let mongoose = require('mongoose');
 
-
-
 var app = express();
 
 // view engine setup
@@ -19,7 +17,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-mongoose.connect('mongodb://localhost:27017/NNPTUD-S2');
+mongoose.connect('mongodb://sa:123456@localhost:27017/NNPTUD-S2?authSource=admin');
 mongoose.connection.on('connected', function () {
   console.log("da connect");
 })
@@ -32,6 +30,7 @@ app.use('/roles', require('./routes/roles'));
 app.use('/auth', require('./routes/auth'));
 app.use('/carts', require('./routes/carts'));
 app.use('/products', require('./routes/products'));
+app.use('/reservations', require('./routes/reservations'));
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
